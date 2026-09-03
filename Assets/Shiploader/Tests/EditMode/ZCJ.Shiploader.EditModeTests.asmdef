@@ -1,0 +1,19 @@
+{
+  "name": "ZCJ.Shiploader.EditModeTests",
+  "rootNamespace": "ZCJ.Shiploader.Tests",
+  "references": [
+    "ZCJ.Shiploader.Runtime",
+    "ZCJ.Shiploader.Editor"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "Newtonsoft.Json.dll"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "autoReferenced": false
+}

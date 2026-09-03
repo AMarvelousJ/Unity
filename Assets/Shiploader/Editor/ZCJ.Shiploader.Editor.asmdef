@@ -1,0 +1,13 @@
+{
+  "name": "ZCJ.Shiploader.Editor",
+  "rootNamespace": "ZCJ.Shiploader.Editor",
+  "references": [
+    "ZCJ.Shiploader.Runtime",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": true
+}

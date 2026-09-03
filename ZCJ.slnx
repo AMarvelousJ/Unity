@@ -1,0 +1,8 @@
+﻿<Solution>
+  <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="ZCJ.Shiploader.Runtime.csproj" />
+  <Project Path="ZCJ.Shiploader.Editor.csproj" />
+  <Project Path="ZCJ.Shiploader.EditModeTests.csproj" />
+  <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="ZCJ.Shiploader.PlayModeTests.csproj" />
+</Solution>

@@ -1,0 +1,8 @@
+{
+  "name": "ZCJ.Shiploader.Runtime",
+  "rootNamespace": "ZCJ.Shiploader",
+  "references": [
+    "Unity.InputSystem"
+  ],
+  "autoReferenced": true
+}

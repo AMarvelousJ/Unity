@@ -1,0 +1,15 @@
+{
+  "name": "ZCJ.Shiploader.PlayModeTests",
+  "rootNamespace": "ZCJ.Shiploader.Tests",
+  "references": [
+    "ZCJ.Shiploader.Runtime"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "Newtonsoft.Json.dll"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "autoReferenced": false
+}
