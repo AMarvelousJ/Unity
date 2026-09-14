@@ -45,6 +45,7 @@ namespace ZCJ.Shiploader
         private ShiploaderPose lastAppliedPose;
         private bool hasAppliedPose;
         private bool remoteControlLocked;
+        private ShiploaderTelescopicVisual telescopicVisual;
 
         public SL15ModelConfig Config => config;
         public ShiploaderPose Pose => pose;
@@ -117,6 +118,8 @@ namespace ZCJ.Shiploader
             chuteAssembly.rotation = Quaternion.Euler(0f, -pose.slew, 0f);
             chuteYawAssembly.localRotation = Quaternion.Euler(0f, -pose.chuteRotate, 0f);
             UpdateLuffRope();
+            if (telescopicVisual == null) telescopicVisual = GetComponentInChildren<ShiploaderTelescopicVisual>();
+            if (telescopicVisual != null) telescopicVisual.Refresh();
 
             lastAppliedPose = pose;
             hasAppliedPose = true;
@@ -159,7 +162,7 @@ namespace ZCJ.Shiploader
             Vector3 direction = directionRotation * Vector3.forward;
             Vector3 fixedTip = boomRoot + direction * config.fixedBoomLength;
             Vector3 boomTip = boomRoot + direction * (config.fixedBoomLength + pose.boomExtension);
-            Vector3 chuteBottom = boomTip + Vector3.down * config.chuteLength;
+            Vector3 chuteBottom = boomTip + Vector3.down * config.PresentationChuteLength;
 
             return new ShiploaderKeyPoints
             {

@@ -35,6 +35,9 @@ namespace ZCJ.Shiploader
         public float beltWidth = 2.4f;
 
         [Header("Visual dimensions (metres)")]
+        [Tooltip("Displayed chute length for a retracted presentation pose. Zero uses the engineering length.")]
+        [Min(0f)] public float visualChuteLength;
+        public float PresentationChuteLength => visualChuteLength > 0f ? visualChuteLength : chuteLength;
         public float portalTopLength = 10f;
         public float portalTopWidth = 8f;
         public float boomTrussWidth = 2.8f;
@@ -94,6 +97,7 @@ namespace ZCJ.Shiploader
 
         public void ResetToWebDefaults()
         {
+            visualChuteLength = 0f;
             railGauge = 23f;
             wheelBase = 22f;
             baseHeight = 12f;

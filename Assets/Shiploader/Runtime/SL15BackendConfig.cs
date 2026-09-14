@@ -10,7 +10,7 @@ namespace ZCJ.Shiploader
         [Min(0.2f)] public float heartbeatInterval = 1f;
         [Min(1f)] public float requestTimeout = 3f;
         [Min(0.2f)] public float reconnectInterval = 2f;
-        [Min(0.2f)] public float staleSnapshotThreshold = 1f;
+        [Min(0.2f)] public float staleSnapshotThreshold = 5f;
 
         public void ResetToDefaults()
         {
@@ -19,7 +19,7 @@ namespace ZCJ.Shiploader
             heartbeatInterval = 1f;
             requestTimeout = 3f;
             reconnectInterval = 2f;
-            staleSnapshotThreshold = 1f;
+            staleSnapshotThreshold = 5f;
         }
 
         public string BuildUrl(string path)

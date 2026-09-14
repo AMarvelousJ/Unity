@@ -105,3 +105,9 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Local validation/render output and generated IDE files
+/[Aa]ssets/[Tt]emp/
+/[Aa]ssets/[Tt]emp.meta
+/Packages/*.bak
+*.slnx

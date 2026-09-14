@@ -17,4 +17,4 @@ MonoBehaviour:
   heartbeatInterval: 1
   requestTimeout: 3
   reconnectInterval: 2
-  staleSnapshotThreshold: 1
+  staleSnapshotThreshold: 5

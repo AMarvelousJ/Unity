@@ -82,6 +82,8 @@ namespace ZCJ.Shiploader
     [Serializable]
     public sealed class SimulationSnapshotDto
     {
+        [JsonProperty("fleet_configured")] public bool? fleetConfigured;
+        [JsonProperty("selected_vessel")] public string selectedVessel;
         [JsonProperty("sim_time")] public double simTime;
         [JsonProperty("sim_paused")] public bool simPaused;
         [JsonProperty("axis_states")] public Dictionary<string, ShiploaderAxisStateDto> axisStates = new();

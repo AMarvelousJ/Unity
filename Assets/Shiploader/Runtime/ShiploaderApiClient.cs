@@ -23,11 +23,13 @@ namespace ZCJ.Shiploader
     {
         private readonly SL15BackendConfig config;
         private readonly IShiploaderApiTransport transport;
+        private readonly string prefix;
 
-        public ShiploaderApiClient(SL15BackendConfig config, IShiploaderApiTransport transport)
+        public ShiploaderApiClient(SL15BackendConfig config, IShiploaderApiTransport transport, string prefix = "")
         {
             this.config = config ?? throw new ArgumentNullException(nameof(config));
             this.transport = transport ?? throw new ArgumentNullException(nameof(transport));
+            this.prefix = prefix;
         }
 
         public Task<JObject> HealthAsync(CancellationToken token) =>
@@ -110,7 +112,7 @@ namespace ZCJ.Shiploader
                 null,
                 token);
 
-        private async Task<T> SendAsync<T>(
+        public async Task<T> SendAsync<T>(
             string method,
             string path,
             object body,
@@ -133,7 +135,7 @@ namespace ZCJ.Shiploader
             string json = body == null ? null : JsonConvert.SerializeObject(body);
             ShiploaderHttpResponse response = await transport.SendAsync(
                 method,
-                config.BuildUrl(path),
+                config.BuildUrl(prefix + path),
                 json,
                 MathfCeilToInt(config.requestTimeout),
                 token);

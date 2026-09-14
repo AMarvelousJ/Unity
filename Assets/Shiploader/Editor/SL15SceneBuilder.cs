@@ -156,6 +156,8 @@ namespace ZCJ.Shiploader.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Selection.activeGameObject = rig.root;
+            SL15VisualRefinement.Apply();
+            SL15ReferenceModel.Apply();
             Debug.Log($"SL15 demo scene rebuilt successfully: {ScenePath}");
         }
 
@@ -809,8 +811,8 @@ namespace ZCJ.Shiploader.Editor
             Transform fixedTip = NewMarker(upperResult.luffPivot, "MK_FIXED_BOOM_TIP", new Vector3(0f, 0f, config.fixedBoomLength));
             Transform boomTip = NewMarker(upperResult.boomHead, "MK_BOOM_TIP", Vector3.zero);
             Transform chuteTop = NewMarker(chute, "MK_CHUTE_TOP", Vector3.zero);
-            Transform chuteBottom = NewMarker(chute, "MK_CHUTE_BOTTOM", new Vector3(0f, -config.chuteLength, 0f));
-            Transform discharge = NewMarker(chute, "MK_DISCHARGE", new Vector3(0f, -config.chuteLength - config.dischargeDrop, 0f));
+            Transform chuteBottom = NewMarker(chute, "MK_CHUTE_BOTTOM", new Vector3(0f, -config.PresentationChuteLength, 0f));
+            Transform discharge = NewMarker(chute, "MK_DISCHARGE", new Vector3(0f, -config.PresentationChuteLength - config.dischargeDrop, 0f));
 
             Transform cameraTarget = NewMarker(root.transform, "CameraTarget", new Vector3(0f, 9f, 6f));
             ShiploaderRigController controller = root.AddComponent<ShiploaderRigController>();
@@ -1011,7 +1013,7 @@ namespace ZCJ.Shiploader.Editor
 
         private static ChuteResult BuildChute(Transform chute, SL15ModelConfig config, MaterialSet materials)
         {
-            float totalLength = config.chuteLength;
+            float totalLength = config.PresentationChuteLength;
             float branchLength = Mathf.Min(3.1f, totalLength * 0.32f);
             float spread = Mathf.Min(1.65f, branchLength * 0.78f);
             float drop = Mathf.Sqrt(Mathf.Max(branchLength * branchLength - spread * spread, 0.25f));
@@ -1142,7 +1144,10 @@ namespace ZCJ.Shiploader.Editor
             camera.allowHDR = true;
             cameraObject.AddComponent<AudioListener>();
             UniversalAdditionalCameraData additionalData = cameraObject.AddComponent<UniversalAdditionalCameraData>();
-            additionalData.renderPostProcessing = true;
+            // The simulation uses bright sunlit water and pale concrete. The
+            // project-wide Bloom profile can blow these surfaces out from
+            // grazing camera angles, so this presentation camera stays linear.
+            additionalData.renderPostProcessing = false;
             additionalData.renderShadows = true;
             ShiploaderOrbitCamera orbit = cameraObject.AddComponent<ShiploaderOrbitCamera>();
             orbit.Configure(target);

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using Newtonsoft.Json.Linq;
 
 namespace ZCJ.Shiploader
 {
@@ -15,6 +16,20 @@ namespace ZCJ.Shiploader
         [SerializeField] private ShiploaderEffectsController effects;
         [SerializeField] private HatchCoverController[] hatchCovers = Array.Empty<HatchCoverController>();
         [SerializeField] private HoldCargoVisualController[] cargoVisuals = Array.Empty<HoldCargoVisualController>();
+        [SerializeField] private string machineId;
+        [SerializeField, TextArea] private string fleetSceneJson;
+        private string manualSession;
+        private int manualSequence;
+        private bool jogging;
+        public string MachineId => machineId;
+        public ShiploaderRigController Rig => rig;
+        public ShiploaderEffectsController Effects => effects;
+        public HatchCoverController[] Covers => hatchCovers;
+        public string SelectedVessel { get; private set; }
+        public bool IsFleet => !string.IsNullOrEmpty(machineId);
+        public bool IsManual => connected && manualSession != null;
+        public bool NeedsSide => IsFleet && int.Parse(machineId) <= 3 && string.IsNullOrEmpty(SelectedVessel);
+        public void ConfigureFleet(string id, string sceneJson) { machineId = id; fleetSceneJson = sceneJson; RebuildClient(); }
 
         private readonly string clientId = $"unity-{Guid.NewGuid():N}";
         private IShiploaderApiTransport transport;
@@ -24,6 +39,7 @@ namespace ZCJ.Shiploader
         private bool polling;
         private bool heartbeating;
         private bool commandBusy;
+        private int stateVersion;
         private bool connected;
         private bool hasSnapshot;
         private bool snapNextPose = true;
@@ -39,7 +55,7 @@ namespace ZCJ.Shiploader
 
         public bool IsConnected => connected;
         public bool IsBusy => connecting || commandBusy;
-        public bool ManualControlLocked => connected && CurrentTask != null && CurrentTask.LocksManualControl;
+        public bool ManualControlLocked => IsFleet ? !IsManual : connected && CurrentTask != null && CurrentTask.LocksManualControl;
         public string ConnectionText => connected ? "已连接" : connecting ? "正在连接" : "连接中断";
         public string ErrorCode => errorCode;
         public string ErrorMessage => errorMessage;
@@ -114,7 +130,7 @@ namespace ZCJ.Shiploader
                 HandleDisconnect("SNAPSHOT_STALE", "快照超过 1 秒未更新");
                 return;
             }
-            if (!polling && now >= nextPollAt)
+            if (!polling && !commandBusy && now >= nextPollAt)
             {
                 _ = PollSnapshotAsync();
             }
@@ -148,7 +164,7 @@ namespace ZCJ.Shiploader
                 return;
             }
             transport ??= new UnityWebRequestShiploaderTransport();
-            api = new ShiploaderApiClient(backendConfig, transport);
+            api = new ShiploaderApiClient(backendConfig, transport, IsFleet ? "/api/fleet/" + machineId : "");
         }
 
         private async Task ConnectAsync()
@@ -162,6 +178,12 @@ namespace ZCJ.Shiploader
             {
                 CancellationToken token = lifetime.Token;
                 await api.HealthAsync(token);
+                if (IsFleet)
+                {
+                    await api.SendAsync<JObject>("PUT", "/api/fleet-configuration", JObject.Parse(fleetSceneJson), token);
+                    var selection = await api.SendAsync<JObject>("GET", "/api/selection", null, token);
+                    SelectedVessel = selection.Value<string>("vessel_id");
+                }
                 await api.RegisterClockAsync(clientId, token);
                 LoadingPlan = await api.GetLoadingPlanAsync(token);
                 CurrentTask = await api.GetCurrentTaskAsync(token);
@@ -193,11 +215,12 @@ namespace ZCJ.Shiploader
         private async Task PollSnapshotAsync()
         {
             polling = true;
+            int version = stateVersion;
             nextPollAt = Time.realtimeSinceStartup + backendConfig.statePollInterval;
             try
             {
                 SimulationSnapshotDto snapshot = await api.GetSnapshotAsync(lifetime.Token);
-                ApplySnapshot(snapshot);
+                if (!commandBusy && version == stateVersion) ApplySnapshot(snapshot);
             }
             catch (OperationCanceledException)
             {
@@ -239,6 +262,12 @@ namespace ZCJ.Shiploader
             {
                 return;
             }
+            if (IsFleet && snapshot.fleetConfigured == false)
+            {
+                HandleDisconnect("BACKEND_RESTARTED", "仿真服务已重启，正在重新登记设备");
+                return;
+            }
+            if (IsFleet && snapshot.fleetConfigured == true) SelectedVessel = snapshot.selectedVessel;
             bool timeReset = LatestSnapshot != null && snapshot.simTime < LatestSnapshot.simTime;
             LatestSnapshot = snapshot;
             CurrentTask = snapshot.loadingTask;
@@ -291,7 +320,7 @@ namespace ZCJ.Shiploader
 
             foreach (HoldCargoVisualController visual in cargoVisuals)
             {
-                if (visual == null || visual.VesselId != "Vessel-R")
+                if (visual == null || visual.VesselId != (IsFleet ? SelectedVessel : "Vessel-R"))
                 {
                     visual?.SetActive(false);
                     continue;
@@ -336,6 +365,7 @@ namespace ZCJ.Shiploader
         private void HandleDisconnect(string code, string message)
         {
             connected = false;
+            manualSession = null;
             errorCode = code;
             errorMessage = message;
             snapNextPose = true;
@@ -359,11 +389,12 @@ namespace ZCJ.Shiploader
         public async Task StartLoadingTaskAsync()
         {
             if (commandBusy || !connected || LoadingPlan?.plan == null ||
-                LoadingPlan.validation?.valid != true || CurrentTask != null)
+                LoadingPlan.validation?.valid != true || CurrentTask != null || NeedsSide)
             {
                 return;
             }
-            commandBusy = true;
+            commandBusy = true; ++stateVersion;
+            manualSession = null;
             pendingStartRequestId ??= Guid.NewGuid().ToString();
             try
             {
@@ -385,7 +416,7 @@ namespace ZCJ.Shiploader
         }
 
         public Task PauseLoadingTaskAsync() => RunTaskCommandAsync(api.PauseTaskAsync);
-        public Task ResumeLoadingTaskAsync() => RunTaskCommandAsync(api.ResumeTaskAsync);
+        public Task ResumeLoadingTaskAsync() { manualSession = null; return RunTaskCommandAsync(api.ResumeTaskAsync); }
         public Task CancelLoadingTaskAsync() => RunTaskCommandAsync(api.CancelTaskAsync);
 
         public async Task ResetLoadingTaskAsync()
@@ -394,7 +425,7 @@ namespace ZCJ.Shiploader
             {
                 return;
             }
-            commandBusy = true;
+            commandBusy = true; ++stateVersion;
             try
             {
                 LoadingResetResponseDto response = await api.ResetTaskAsync(
@@ -430,7 +461,7 @@ namespace ZCJ.Shiploader
                 hatch.SetOpen(open);
                 return;
             }
-            commandBusy = true;
+            commandBusy = true; ++stateVersion;
             try
             {
                 SceneConfigDto scene = await api.SetHatchCoverAsync(
@@ -457,7 +488,7 @@ namespace ZCJ.Shiploader
             {
                 return;
             }
-            commandBusy = true;
+            commandBusy = true; ++stateVersion;
             try
             {
                 CurrentTask = await command(CurrentTask.taskId, lifetime.Token);
@@ -511,6 +542,63 @@ namespace ZCJ.Shiploader
             {
                 // The five-second server lease is the fallback when shutdown cannot send DELETE.
             }
+        }
+
+        public async Task SelectVesselAsync(string vessel)
+        {
+            if (!IsFleet || !connected || IsBusy || CurrentTask != null) return;
+            commandBusy = true; ++stateVersion;
+            try {
+                await api.SendAsync<JObject>("POST", "/api/selection", new { vessel_id = vessel }, lifetime.Token);
+                SelectedVessel = vessel;
+                LoadingPlan = await api.GetLoadingPlanAsync(lifetime.Token);
+                errorCode = errorMessage = null;
+            } catch (Exception e) when (e is not OperationCanceledException) { SetCommandError(e); }
+            finally { commandBusy = false; }
+        }
+
+        private int manualGeneration;
+        public async Task EnterManualAsync()
+        {
+            if (!IsFleet || !connected || IsBusy) return;
+            int generation = ++manualGeneration;
+            commandBusy = true; ++stateVersion;
+            try {
+                var result = await api.SendAsync<JObject>("POST", "/api/manual/enter", null, lifetime.Token);
+                if (generation != manualGeneration) {
+                    await api.SendAsync<JObject>("POST", "/api/manual/stop", new { session = result.Value<string>("session") }, lifetime.Token);
+                    return;
+                }
+                manualSession = result.Value<string>("session"); manualSequence = 0;
+                CurrentTask = await api.GetCurrentTaskAsync(lifetime.Token);
+                errorCode = errorMessage = null;
+            } catch (Exception e) when (e is not OperationCanceledException) { SetCommandError(e); }
+            finally { commandBusy = false; }
+        }
+
+        public async Task StopManualAsync()
+        {
+            ++manualGeneration;
+            string session = manualSession;
+            manualSession = null;
+            if (!connected || !IsFleet || session == null) return;
+            try { await api.SendAsync<JObject>("POST", "/api/manual/stop", new { session }, lifetime.Token); }
+            catch (Exception e) when (e is not OperationCanceledException) { SetCommandError(e); }
+        }
+
+        public async Task JogAsync(float travel, float slew, float luff, float extension, float chute)
+        {
+            if (!IsManual || jogging || IsBusy) return;
+            jogging = true;
+            string session = manualSession;
+            try {
+                await api.SendAsync<SimulationSnapshotDto>("POST", "/api/manual/jog", new {
+                    session, sequence = ++manualSequence,
+                    axes = new { travel, slew, boom_luff = luff, boom_extension = extension, chute_rotate = chute }
+                }, lifetime.Token);
+            } catch (Exception e) when (e is not OperationCanceledException) {
+                if (session == manualSession) { manualSession = null; SetCommandError(e); }
+            } finally { jogging = false; }
         }
     }
 }

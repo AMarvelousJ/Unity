@@ -22,6 +22,19 @@ namespace ZCJ.Shiploader
         private GUIStyle titleStyle;
         private GUIStyle sectionStyle;
         private GUIStyle valueStyle;
+        private bool controlsExpanded;
+        private ShiploaderFleetController Fleet => GetComponent<ShiploaderFleetController>();
+        public void ExpandControls() { controlsExpanded = true; }
+        public void ToggleOperationPanel() { remoteCollapsed = !remoteCollapsed; }
+        private bool detailsExpanded;
+        private bool remoteCollapsed;
+        private bool lastWalking, savedControlsExpanded, savedRemoteCollapsed;
+        private GUISkin presentationSkin;
+        private float PanelWidth => Mathf.Min(320f, Screen.width * 0.3f);
+        private Rect ToolbarRect => new(16f, 16f, Mathf.Min(740f, Screen.width - PanelWidth - 48f), 154f);
+        private Rect ControlsRect => new(16f, 178f, 330f, Mathf.Max(100f, Screen.height - 194f));
+        private Rect RemoteRect => new(Screen.width - PanelWidth - 16f, 16f, PanelWidth,
+            remoteCollapsed ? 48f : detailsExpanded ? Screen.height - 32f : Mathf.Min(500f, Screen.height - 32f));
 
         public void Configure(
             ShiploaderRigController rigController,
@@ -41,11 +54,13 @@ namespace ZCJ.Shiploader
             effects = effectsController;
             orbitCamera = cameraController;
             remoteCoordinator = coordinator;
+            orbitCamera?.BindWorkingRig(rig);
             RefreshHatches();
         }
 
         private void Awake()
         {
+            orbitCamera?.BindWorkingRig(rig);
             RefreshHatches();
         }
 
@@ -61,8 +76,77 @@ namespace ZCJ.Shiploader
                 return;
             }
 
+            GUISkin originalSkin = GUI.skin;
             EnsureStyles();
-            Rect panel = new(16f, 16f, 356f, Mathf.Max(260f, Screen.height - 32f));
+            bool walking = orbitCamera != null && orbitCamera.Walkthrough != null && orbitCamera.Walkthrough.Active;
+            if (walking && !lastWalking)
+            {
+                savedControlsExpanded = controlsExpanded; savedRemoteCollapsed = remoteCollapsed;
+                controlsExpanded = false; remoteCollapsed = true;
+            }
+            else if (!walking && lastWalking)
+            {
+                controlsExpanded = savedControlsExpanded; remoteCollapsed = savedRemoteCollapsed;
+            }
+            lastWalking = walking;
+            DrawViewToolbar();
+            orbitCamera?.SetInputBlocks(ToolbarRect, controlsExpanded ? ControlsRect : Rect.zero,
+                remoteCoordinator != null ? RemoteRect : Rect.zero);
+            if (controlsExpanded) DrawManualPanel();
+            else if (Fleet != null) Array.Clear(Fleet.UiInput, 0, 5);
+            DrawRemotePanel();
+            GUI.skin = originalSkin;
+        }
+
+        private void DrawViewToolbar()
+        {
+            GUILayout.BeginArea(ToolbarRect, GUI.skin.box);
+            GUILayout.BeginHorizontal();
+            CameraButton("港口总览", ShiploaderCameraPreset.Perspective);
+            CameraButton("港区俯视", ShiploaderCameraPreset.PortTop);
+            CameraButton("作业跟随", ShiploaderCameraPreset.Work);
+            CameraButton("落料近景", ShiploaderCameraPreset.Discharge);
+            var walk = orbitCamera != null ? orbitCamera.Walkthrough : null;
+            if (GUILayout.Button(walk != null && walk.Active ? "退出漫游" : "手柄漫游", GUILayout.Height(28f)))
+                walk?.Toggle();
+            if (GUILayout.Button(controlsExpanded ? "收起控制" : "设备控制", GUILayout.Height(28f)))
+            { if (Fleet != null && !controlsExpanded) Fleet.Manual(); else controlsExpanded = !controlsExpanded; }
+            GUILayout.EndHorizontal();
+            if (walk != null && walk.Active)
+            {
+                GUILayout.Label(walk.HasGamepad ? "第一人称漫游 · Xbox 手柄已连接" : "手柄未连接 · 可使用 WASD 行走", sectionStyle);
+                GUILayout.Label("左摇杆：行走　右摇杆：转向　RT：加速");
+                GUILayout.Label(walk.ClimbHint);
+                GUILayout.Label("Y：返回起点　B / Start：退出　请保持 Game 窗口焦点");
+                GUILayout.EndArea();
+                return;
+            }
+            if (Fleet != null) {
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("◀ LB", GUILayout.Width(65))) Fleet.Next(-1);
+                GUILayout.Label(Fleet.SelectionText, sectionStyle);
+                if (GUILayout.Button("RB ▶", GUILayout.Width(65))) Fleet.Next(1);
+                GUILayout.EndHorizontal();
+                GUILayout.BeginHorizontal();
+                if (int.Parse(remoteCoordinator.MachineId) <= 3) {
+                    if (GUILayout.Button("← 左侧船")) _ = remoteCoordinator.SelectVesselAsync("Vessel-R");
+                    if (GUILayout.Button("右侧船 →")) _ = remoteCoordinator.SelectVesselAsync("Vessel-L");
+                }
+                GUILayout.Label("A：装船/继续　B：暂停　X：手动　Y：视角");
+                GUILayout.EndHorizontal();
+                GUILayout.Label("Menu：作业面板　F8 / 点击手柄漫游：进入漫游");
+                GUILayout.EndArea(); return;
+            }
+            GUILayout.Label("01 号装船机 · " + (orbitCamera != null && !orbitCamera.Following
+                ? "自由观察（点击作业跟随可返回）" : "当前观察设备"), sectionStyle);
+            GUILayout.Label("右键拖动环绕 · 滚轮缩放 · 详情按需展开");
+            GUILayout.Label(!string.IsNullOrEmpty(walk?.Hint) ? walk.Hint : "Start / F8：进入手柄漫游（Game 窗口）");
+            GUILayout.EndArea();
+        }
+
+        private void DrawManualPanel()
+        {
+            Rect panel = ControlsRect;
             GUILayout.BeginArea(panel, GUI.skin.box);
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
 
@@ -80,6 +164,25 @@ namespace ZCJ.Shiploader
 
             GUILayout.Space(8f);
             GUILayout.Label("五轴控制", sectionStyle);
+            if (Fleet != null) {
+                bool enabled = GUI.enabled;
+                if (!remoteCoordinator.IsManual && GUILayout.Button("暂停自动任务并进入手动（X）")) Fleet.Manual();
+                GUI.enabled = enabled && remoteCoordinator.IsManual;
+                var pose = rig.Pose;
+                string[] names = { "大车行走", "臂架回转", "臂架俯仰", "臂架伸缩", "溜筒回转" };
+                float[] values = { pose.travel, pose.slew, pose.boomLuff, pose.boomExtension, pose.chuteRotate };
+                for (int i = 0; i < 5; i++) {
+                    GUILayout.Label($"{names[i]}：{values[i]:F2}");
+                    GUILayout.BeginHorizontal();
+                    bool minus = GUILayout.RepeatButton("− 按住", GUILayout.Height(28));
+                    bool plus = GUILayout.RepeatButton("+ 按住", GUILayout.Height(28));
+                    Fleet.UiInput[i] = (plus ? 1 : 0) - (minus ? 1 : 0);
+                    GUILayout.EndHorizontal();
+                }
+                GUI.enabled = enabled;
+                GUILayout.Label("左摇杆：行走 / 回转\n右摇杆上下：俯仰\nLT / RT：缩回 / 伸出\n十字键上下：溜筒回转\n松开停止；切换设备后摇杆回中再操作。");
+                GUILayout.EndScrollView(); GUILayout.EndArea(); return;
+            }
             bool manualLocked = remoteCoordinator != null && remoteCoordinator.ManualControlLocked;
             bool previousEnabled = GUI.enabled;
             GUI.enabled = previousEnabled && !manualLocked;
@@ -133,7 +236,6 @@ namespace ZCJ.Shiploader
             GUILayout.EndScrollView();
             GUILayout.EndArea();
 
-            DrawRemotePanel();
         }
 
         private float DrawAxis(string label, float value, AxisRange range, string unit)
@@ -209,17 +311,19 @@ namespace ZCJ.Shiploader
                 return;
             }
 
-            Rect panel = new(Mathf.Max(388f, Screen.width - 396f), 16f, 380f,
-                Mathf.Max(260f, Screen.height - 32f));
+            Rect panel = RemoteRect;
             GUILayout.BeginArea(panel, GUI.skin.box);
+            if (GUILayout.Button(remoteCollapsed ? "展开作业面板" : "收起作业面板", GUILayout.Height(28f)))
+                remoteCollapsed = !remoteCollapsed;
+            if (remoteCollapsed) { GUILayout.EndArea(); return; }
             remoteScrollPosition = GUILayout.BeginScrollView(remoteScrollPosition);
             GUILayout.Label("一键装船", titleStyle);
 
             Color previousColor = GUI.color;
             GUI.color = remoteCoordinator.IsConnected
-                ? new Color(0.15f, 0.58f, 0.25f)
-                : new Color(0.82f, 0.25f, 0.18f);
-            GUILayout.Label($"FastAPI：{remoteCoordinator.ConnectionText}", sectionStyle);
+                ? new Color(0.45f, 1f, 0.65f)
+                : new Color(1f, 0.55f, 0.4f);
+            GUILayout.Label($"仿真服务：{remoteCoordinator.ConnectionText}", sectionStyle);
             GUI.color = previousColor;
 
             LoadingPlanEnvelopeDto envelope = remoteCoordinator.LoadingPlan;
@@ -228,7 +332,7 @@ namespace ZCJ.Shiploader
                 string valid = envelope.validation?.valid == true ? "校验通过" : "校验失败";
                 GUILayout.Label($"{envelope.plan.vesselName} · {envelope.plan.name}");
                 GUILayout.Label($"计划：{envelope.plan.totalTargetKg:N0} kg · {valid}");
-                GUILayout.Label("固定演示倍率：机械 12× · 装载 600× · 排水 14s");
+                if (detailsExpanded) GUILayout.Label("固定演示倍率：机械 12× · 装载 600× · 排水 14s");
             }
             else
             {
@@ -241,7 +345,7 @@ namespace ZCJ.Shiploader
             DrawActionButton(
                 "一键装船",
                 remoteCoordinator.IsConnected && !remoteCoordinator.IsBusy &&
-                envelope?.validation?.valid == true && task == null,
+                envelope?.validation?.valid == true && task == null && !remoteCoordinator.NeedsSide,
                 () => _ = remoteCoordinator.StartLoadingTaskAsync());
             DrawActionButton(
                 "暂停",
@@ -297,7 +401,7 @@ namespace ZCJ.Shiploader
                     GUI.skin.box);
             }
             GUILayout.Space(6f);
-            GUILayout.Label("仿真用途：Unity 仅展示 FastAPI 真值，不用于真实 PLC、稳性或装船决策。",
+            if (detailsExpanded) GUILayout.Label("仿真用途：Unity 仅展示 FastAPI 真值，不用于真实 PLC、稳性或装船决策。",
                 GUI.skin.label);
             GUILayout.EndScrollView();
             GUILayout.EndArea();
@@ -313,7 +417,9 @@ namespace ZCJ.Shiploader
                 return;
             }
 
-            GUILayout.Label($"状态：{TranslateStatus(task.status)} · 阶段：{task.currentPhase ?? "-"}");
+            GUILayout.Label($"状态：{TranslateStatus(task.status)} · {TranslatePhase(task.currentPhase)}");
+            var activeBatch = task.batchProgress?.FirstOrDefault(item => item.batchNo == task.currentBatchNo);
+            GUILayout.Label($"当前船舱：{activeBatch?.holdNo ?? "待分配"}");
             GUILayout.Label($"轮次/批次：{task.currentRoundNo?.ToString() ?? "-"} / {task.currentBatchNo?.ToString() ?? "-"}");
             GUILayout.Label($"总吨位：{task.loadedTotalKg:N0} / {task.targetTotalKg:N0} kg");
             DrawProgressBar(task.Progress, $"{task.Progress:P1}");
@@ -326,6 +432,11 @@ namespace ZCJ.Shiploader
                 GUILayout.Label($"暂停原因：{task.pauseReason}");
             }
 
+            if (GUILayout.Button(detailsExpanded ? "收起各舱进度与时间线" : "展开各舱进度与时间线", GUILayout.Height(28f)))
+                detailsExpanded = !detailsExpanded;
+            if (!string.IsNullOrEmpty(task.failureCode) || !string.IsNullOrEmpty(task.failureMessage))
+                GUILayout.Label($"任务错误 [{task.failureCode}] {task.failureMessage}", GUI.skin.box);
+            if (!detailsExpanded) return;
             GUILayout.Label("五舱进度", sectionStyle);
             foreach (LoadingHoldProgressDto hold in task.holdProgress ?? Enumerable.Empty<LoadingHoldProgressDto>())
             {
@@ -389,9 +500,39 @@ namespace ZCJ.Shiploader
             };
         }
 
+        private static string TranslatePhase(string phase)
+        {
+            return phase switch
+            {
+                "path_target_luff" => "调整臂架高度",
+                "path_target_slew" => "回转至目标船舱",
+                "path_target_extension" => "调整臂架伸缩",
+                "path_travel" => "大车行走定位",
+                "path_safe_luff" => "抬臂至安全高度",
+                "path_safe_retract" => "收回伸缩臂",
+                "path_safe_slew" => "安全回转",
+                "path_final_approach" => "对准落料位置",
+                "path_planning" => "规划定位路径",
+                "belt_starting" => "启动输送带",
+                "loading_cargo" => "正在装载",
+                "drainage_wait" => "等待排水",
+                "final_verification" => "检查装载结果",
+                "validate" => "检查作业计划",
+                "precheck_failed" => "作业预检未通过",
+                "paused" => "作业已暂停",
+                "completed" => "作业已完成",
+                "cancelled" => "作业已终止",
+                "failed" => "作业失败",
+                "loading" => "正在装载",
+                "waiting_drainage" => "等待排水",
+                null or "" => "等待作业",
+                _ => "执行作业步骤",
+            };
+        }
+
         private void RefreshHatches()
         {
-            hatchCovers = FindObjectsByType<HatchCoverController>(FindObjectsSortMode.None)
+            hatchCovers = (remoteCoordinator != null && remoteCoordinator.IsFleet ? remoteCoordinator.Covers : FindObjectsByType<HatchCoverController>(FindObjectsSortMode.None))
                 .OrderBy(item => item.VesselId)
                 .ThenBy(item => item.HoldId)
                 .ToArray();
@@ -415,31 +556,53 @@ namespace ZCJ.Shiploader
                 font = runtimeFont,
                 fontSize = 22,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(0.08f, 0.1f, 0.14f) },
+                normal = { textColor = new Color(0.95f, 0.97f, 1f) },
             };
             sectionStyle = new GUIStyle(GUI.skin.label)
             {
                 font = runtimeFont,
                 fontSize = 16,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(0.16f, 0.2f, 0.26f) },
+                normal = { textColor = new Color(0.8f, 0.9f, 1f) },
             };
             valueStyle = new GUIStyle(GUI.skin.label)
             {
                 font = runtimeFont,
                 alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = new Color(0.12f, 0.18f, 0.24f) },
+                normal = { textColor = new Color(0.9f, 0.94f, 1f) },
             };
             GUI.skin.font = runtimeFont;
         }
 
         private void EnsureStyles()
         {
+            if (presentationSkin == null)
+            {
+                presentationSkin = Instantiate(GUI.skin);
+                presentationSkin.label.normal.textColor = new Color(0.9f, 0.94f, 1f);
+                presentationSkin.label.wordWrap = true;
+                var background = new Texture2D(1, 1);
+                background.SetPixel(0, 0, new Color(0.035f, 0.065f, 0.1f, 0.94f));
+                background.Apply();
+                presentationSkin.box.normal.background = background;
+                presentationSkin.box.padding = new RectOffset(12, 12, 10, 10);
+            }
+            GUI.skin = presentationSkin;
             if (titleStyle == null || sectionStyle == null || valueStyle == null)
             {
                 CreateStyles();
             }
             GUI.skin.font = runtimeFont;
+        }
+
+        private void OnDestroy()
+        {
+            if (presentationSkin != null)
+            {
+                Destroy(presentationSkin.box.normal.background);
+                Destroy(presentationSkin);
+            }
+            if (runtimeFont != null && runtimeFont.name != "LegacyRuntime") Destroy(runtimeFont);
         }
     }
 }

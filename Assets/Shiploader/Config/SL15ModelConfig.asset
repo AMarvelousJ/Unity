@@ -20,6 +20,7 @@ MonoBehaviour:
   boomExtensionTravel: 21.25
   telescopicOverlap: 3
   chuteLength: 12.6
+  visualChuteLength: 7.4
   dischargeDrop: 0.6
   beltWidth: 2.4
   portalTopLength: 10

@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9fa0ede9146f86542b04ed6ec040b494, type: 3}
+  m_Name: FleetModel_03_SL15_VideoPreview
+  m_EditorClassIdentifier: ZCJ.Shiploader.Runtime::ZCJ.Shiploader.SL15ModelConfig
+  railGauge: 23
+  wheelBase: 22
+  baseHeight: 12
+  boomBaseHeightOffset: 1.8
+  fixedBoomLength: 16.5
+  boomExtensionTravel: 21.25
+  telescopicOverlap: 3
+  chuteLength: 12.6
+  dischargeDrop: 0.6
+  beltWidth: 2.4
+  visualChuteLength: 7.4
+  portalTopLength: 10
+  portalTopWidth: 8
+  boomTrussWidth: 2.8
+  boomTrussHeight: 2.5
+  chuteTrunkRadius: 0.82
+  travelRange:
+    min: -45
+    max: 50
+  slewRange:
+    min: -35
+    max: 215
+  luffRange:
+    min: -10
+    max: 24
+  extensionRange:
+    min: 0
+    max: 21.25
+  chuteRotateRange:
+    min: -180
+    max: 180
+  homePose:
+    travel: 0
+    slew: 0
+    boomLuff: 10
+    boomExtension: 0
+    chuteRotate: 0
